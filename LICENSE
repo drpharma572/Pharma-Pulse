@@ -1,9 +1,12 @@
 <<<<<<< HEAD
+<<<<<<< HEAD
 Copyright (c) 2025 K. All rights reserved.
 
 You may view and use this code for personal or educational purposes only. 
 Redistribution, commercial use, or sale of this code or derivatives is strictly prohibited without written permission from the author.
 =======
+=======
+>>>>>>> 5ccc9af (Initial commit with app and data)
                                  Apache License
                            Version 2.0, January 2004
                         http://www.apache.org/licenses/
@@ -205,4 +208,13 @@ Redistribution, commercial use, or sale of this code or derivatives is strictly 
    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
    See the License for the specific language governing permissions and
    limitations under the License.
+<<<<<<< HEAD
 >>>>>>> 813d2fa (Initial commit)
+=======
+=======
+Copyright (c) 2025 K. All rights reserved.
+
+You may view and use this code for personal or educational purposes only. 
+Redistribution, commercial use, or sale of this code or derivatives is strictly prohibited without written permission from the author.
+>>>>>>> 7a0612e (Add proprietary license)
+>>>>>>> 5ccc9af (Initial commit with app and data)
