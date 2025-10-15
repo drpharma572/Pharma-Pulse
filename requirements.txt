@@ -1,6 +1,7 @@
 streamlit
 pandas
 matplotlib
+matplotlib-venn
 openpyxl
 numpy
 seaborn
