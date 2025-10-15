@@ -72,8 +72,12 @@ with chart_tabs[0]:
         num_col = st.selectbox("Select numeric column", numeric_cols, key="bar_num")
         cat_col = st.selectbox("Select categorical column", categorical_cols, key="bar_cat")
         fig, ax = plt.subplots()
-        sns.barplot(x=cat_col, y=num_col, data=filtered_df, ax=ax, estimator=None)
+        try:
+            sns.barplot(x=cat_col, y=num_col, data=filtered_df, ax=ax, errorbar=None)
+        except Exception:
+            ax.bar(filtered_df[cat_col].astype(str), filtered_df[num_col])
         ax.set_title(f"{num_col} by {cat_col}")
+        plt.xticks(rotation=45)
         st.pyplot(fig)
     else:
         st.info("No suitable numeric and categorical columns found.")
@@ -84,10 +88,10 @@ with chart_tabs[1]:
     if categorical_cols:
         pie_col = st.selectbox("Select column for Pie Chart", categorical_cols, key="pie")
         pie_data = filtered_df[pie_col].value_counts()
-        fig, ax = plt.subplots()
-        ax.pie(pie_data.values, labels=pie_data.index, autopct="%1.1f%%")
-        ax.set_title(f"Distribution of {pie_col}")
-        st.pyplot(fig)
+        fig2, ax2 = plt.subplots()
+        ax2.pie(pie_data.values, labels=pie_data.index, autopct="%1.1f%%")
+        ax2.set_title(f"Distribution of {pie_col}")
+        st.pyplot(fig2)
     else:
         st.info("No categorical columns available for Pie Chart.")
 
@@ -95,10 +99,10 @@ with chart_tabs[1]:
 with chart_tabs[2]:
     if numeric_cols:
         hist_col = st.selectbox("Select column for Histogram", numeric_cols, key="hist")
-        fig, ax = plt.subplots()
-        sns.histplot(filtered_df[hist_col], bins=20, kde=False, ax=ax)
-        ax.set_title(f"Histogram of {hist_col}")
-        st.pyplot(fig)
+        fig3, ax3 = plt.subplots()
+        sns.histplot(filtered_df[hist_col].dropna(), bins=20, kde=False, ax=ax3)
+        ax3.set_title(f"Histogram of {hist_col}")
+        st.pyplot(fig3)
     else:
         st.info("No numeric columns available for Histogram.")
 
@@ -107,10 +111,10 @@ with chart_tabs[3]:
     if len(numeric_cols) >= 2:
         x_col = st.selectbox("X-axis", numeric_cols, key="scatter_x")
         y_col = st.selectbox("Y-axis", numeric_cols, key="scatter_y")
-        fig, ax = plt.subplots()
-        sns.scatterplot(x=filtered_df[x_col], y=filtered_df[y_col], ax=ax)
-        ax.set_title(f"{y_col} vs {x_col}")
-        st.pyplot(fig)
+        fig4, ax4 = plt.subplots()
+        sns.scatterplot(x=filtered_df[x_col], y=filtered_df[y_col], ax=ax4)
+        ax4.set_title(f"{y_col} vs {x_col}")
+        st.pyplot(fig4)
     else:
         st.info("Need at least two numeric columns for scatter plot.")
 
@@ -118,10 +122,10 @@ with chart_tabs[3]:
 with chart_tabs[4]:
     if len(numeric_cols) >= 1:
         line_col = st.selectbox("Select numeric column for Line Chart", numeric_cols, key="line")
-        fig, ax = plt.subplots()
-        ax.plot(filtered_df[line_col].reset_index(drop=True))
-        ax.set_title(f"Line Chart of {line_col}")
-        st.pyplot(fig)
+        fig5, ax5 = plt.subplots()
+        ax5.plot(filtered_df[line_col].reset_index(drop=True))
+        ax5.set_title(f"Line Chart of {line_col}")
+        st.pyplot(fig5)
     else:
         st.info("No numeric data for Line Chart.")
 
@@ -129,10 +133,10 @@ with chart_tabs[4]:
 with chart_tabs[5]:
     if len(numeric_cols) >= 1:
         area_col = st.selectbox("Select numeric column for Area Chart", numeric_cols, key="area")
-        fig, ax = plt.subplots()
-        ax.fill_between(range(len(filtered_df[area_col])), filtered_df[area_col])
-        ax.set_title(f"Area under curve — {area_col}")
-        st.pyplot(fig)
+        fig6, ax6 = plt.subplots()
+        ax6.fill_between(range(len(filtered_df[area_col].dropna())), filtered_df[area_col].dropna())
+        ax6.set_title(f"Area under curve — {area_col}")
+        st.pyplot(fig6)
     else:
         st.info("No numeric data for Area Chart.")
 
@@ -172,7 +176,10 @@ def create_pdf(dataframe):
     pdf.cell(200, 10, txt="PharmaPulse Data Summary", ln=True, align="C")
 
     for col in dataframe.columns:
-        pdf.cell(200, 8, txt=f"{col}: {dataframe[col].describe().to_dict()}", ln=True)
+        try:
+            pdf.multi_cell(0, 8, txt=f"{col}: {dataframe[col].describe().to_dict()}")
+        except Exception:
+            continue
 
     buffer = BytesIO()
     pdf.output(buffer)
