@@ -1,218 +1,163 @@
+# app.py
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
-import numpy as np
-import os
 import tempfile
-from io import BytesIO
-from fpdf import FPDF, HTMLMixin
+import os
+from fpdf import FPDF
+import numpy as np
 
-# ------------------------------
-# PDF class with UTF-8 support and footer
-# ------------------------------
-class PDF(FPDF, HTMLMixin):
-    def footer(self):
-        self.set_y(-10)
-        self.set_font("Arial", "I", 8)
-        self.set_text_color(100, 100, 100)
-        self.cell(0, 10, "PharmaPulseByDrK", align="C")
-
-def create_pdf(df, result_text, chart_buffers):
-    pdf = PDF()
-    pdf.set_auto_page_break(auto=True, margin=15)
-
-    # --------------------
-    # Title Page
-    # --------------------
-    pdf.add_page()
-    pdf.set_font("Arial", "B", 20)
-    pdf.cell(0, 20, "📊 PharmaPulse", ln=True, align="C")
-    pdf.set_font("Arial", "", 14)
-    pdf.ln(10)
-    pdf.multi_cell(0, 8, "Interactive Research Data Dashboard by Dr. K\n\nThis report includes analysis, charts, and conclusions generated automatically from the uploaded Excel data.", align="C")
-
-    # --------------------
-    # Results
-    # --------------------
-    pdf.add_page()
-    pdf.set_font("Arial", "", 12)
-    pdf.multi_cell(0, 8, "📌 Analysis Results:\n" + result_text)
-
-    # --------------------
-    # Charts
-    # --------------------
-    temp_files = []
-    for buf in chart_buffers:
-        buf.seek(0)
-        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
-        temp_file.write(buf.getbuffer())
-        temp_file.close()
-        pdf.add_page()
-        pdf.image(temp_file.name, x=10, y=20, w=180)
-        temp_files.append(temp_file.name)
-
-    # --------------------
-    # Data Preview
-    # --------------------
-    pdf.add_page()
-    pdf.set_font("Arial", "", 10)
-    pdf.multi_cell(0, 6, "📋 Sample Data Preview (First 10 rows):\n")
-    for i, row in df.head(10).iterrows():
-        pdf.multi_cell(0, 6, str(row.to_dict()))
-        pdf.ln(1)
-
-    # --------------------
-    # Conclusion
-    # --------------------
-    pdf.add_page()
-    pdf.set_font("Arial", "", 12)
-    pdf.multi_cell(0, 8, "📄 Conclusion:\nThe analysis provides insights into data distribution, relationships between variables, and key trends.")
-
-    # Save to BytesIO
-    buffer = BytesIO()
-    pdf.output(buffer)
-    buffer.seek(0)
-
-    # Clean temp files
-    for f in temp_files:
-        os.remove(f)
-
-    return buffer
-
-# ------------------------------
-# Streamlit App
-# ------------------------------
 st.set_page_config(page_title="PharmaPulse Excel Viewer", layout="wide")
 st.title("📊 PharmaPulse Interactive Excel Viewer")
 
-# ------------------------------
-# File Upload
-# ------------------------------
-uploaded_file = st.file_uploader("Upload your Excel file", type=["xlsx"])
+# ------------------------
+# File upload
+# ------------------------
+uploaded_file = st.file_uploader(
+    "Upload an Excel file",
+    type=["xlsx"],
+)
 
+# ------------------------
+# Load and preview data
+# ------------------------
 if uploaded_file:
     df = pd.read_excel(uploaded_file)
     st.success(f"✅ File loaded successfully: {uploaded_file.name}")
 
-    # Data preview
     st.subheader("📋 Data Preview")
     st.dataframe(df)
 
-    # Summary
     st.subheader("📈 Summary Statistics")
-    st.write(df.describe(include='all'))
+    st.dataframe(df.describe(include='all'))
 
-    # ------------------------------
-    # Data Visualization
-    # ------------------------------
+    st.subheader("🎯 Data Filters")
+    filter_cols = st.multiselect("Select columns to filter", df.columns.tolist())
+    filtered_df = df.copy()
+    if filter_cols:
+        for col in filter_cols:
+            unique_vals = df[col].dropna().unique().tolist()
+            selected_vals = st.multiselect(f"Filter {col}", unique_vals, default=unique_vals)
+            filtered_df = filtered_df[filtered_df[col].isin(selected_vals)]
+    st.write(f"Filtered Data — {len(filtered_df)} rows remaining.")
+
+    # ------------------------
+    # Visualization
+    # ------------------------
+    st.subheader("📊 Data Visualization")
+
     chart_images = []
 
-    numeric_cols = df.select_dtypes(include=np.number).columns.tolist()
-    categorical_cols = df.select_dtypes(include="object").columns.tolist()
-
     # Bar chart
+    numeric_cols = filtered_df.select_dtypes(include="number").columns.tolist()
+    categorical_cols = filtered_df.select_dtypes(include="object").columns.tolist()
     if numeric_cols and categorical_cols:
-        st.subheader("📊 Bar Chart")
-        num_col = st.selectbox("Select numeric column for Bar chart", numeric_cols, key="bar_num")
-        cat_col = st.selectbox("Select categorical column for Bar chart", categorical_cols, key="bar_cat")
-        if num_col and cat_col:
-            bar_data = df.groupby(cat_col)[num_col].sum().reset_index()
-            fig, ax = plt.subplots()
-            sns.barplot(x=cat_col, y=num_col, data=bar_data, ax=ax)
-            ax.set_title(f"{num_col} by {cat_col}")
-            st.pyplot(fig)
-            buf = BytesIO()
-            fig.savefig(buf, format="png")
-            chart_images.append(buf)
-            plt.close(fig)
+        num_col = st.selectbox("Select numeric column for Bar chart", numeric_cols)
+        cat_col = st.selectbox("Select categorical column for Bar chart", categorical_cols)
+        bar_data = filtered_df.groupby(cat_col)[num_col].sum().reset_index()
+        fig, ax = plt.subplots()
+        sns.barplot(x=cat_col, y=num_col, data=bar_data, estimator=np.sum, ci=None, ax=ax)
+        ax.set_title(f"{num_col} by {cat_col}")
+        st.pyplot(fig)
+        # Save chart temporarily
+        temp_bar = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
+        fig.savefig(temp_bar.name, bbox_inches='tight')
+        chart_images.append(temp_bar.name)
+        plt.close(fig)
 
     # Pie chart
     if categorical_cols:
-        st.subheader("🥧 Pie Chart")
-        pie_col = st.selectbox("Select categorical column for Pie chart", categorical_cols, key="pie_cat")
-        if pie_col:
-            pie_data = df[pie_col].value_counts()
-            fig, ax = plt.subplots()
-            ax.pie(pie_data.values, labels=pie_data.index, autopct="%1.1f%%")
-            ax.set_title(f"Pie chart of {pie_col}")
-            st.pyplot(fig)
-            buf = BytesIO()
-            fig.savefig(buf, format="png")
-            chart_images.append(buf)
-            plt.close(fig)
+        pie_col = st.selectbox("Select categorical column for Pie chart", categorical_cols)
+        pie_data = filtered_df[pie_col].value_counts()
+        fig2, ax2 = plt.subplots()
+        ax2.pie(pie_data.values, labels=pie_data.index, autopct="%1.1f%%")
+        ax2.set_title(f"Pie chart of {pie_col}")
+        st.pyplot(fig2)
+        temp_pie = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
+        fig2.savefig(temp_pie.name, bbox_inches='tight')
+        chart_images.append(temp_pie.name)
+        plt.close(fig2)
 
     # Histogram
     if numeric_cols:
-        st.subheader("📊 Histogram")
-        hist_col = st.selectbox("Select numeric column for Histogram", numeric_cols, key="hist_num")
-        if hist_col:
-            fig, ax = plt.subplots()
-            ax.hist(df[hist_col].dropna(), bins='auto', color='skyblue', edgecolor='black')
-            ax.set_title(f"Histogram of {hist_col}")
-            st.pyplot(fig)
-            buf = BytesIO()
-            fig.savefig(buf, format="png")
-            chart_images.append(buf)
-            plt.close(fig)
+        hist_col = st.selectbox("Select numeric column for Histogram", numeric_cols)
+        fig3, ax3 = plt.subplots()
+        ax3.hist(filtered_df[hist_col].dropna(), bins=10, edgecolor='black')
+        ax3.set_title(f"Histogram of {hist_col}")
+        st.pyplot(fig3)
+        temp_hist = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
+        fig3.savefig(temp_hist.name, bbox_inches='tight')
+        chart_images.append(temp_hist.name)
+        plt.close(fig3)
 
-    # Scatter plot
-    if len(numeric_cols) >= 2:
-        st.subheader("🔹 Scatter Plot")
-        x_col = st.selectbox("Select X-axis numeric column", numeric_cols, key="scatter_x")
-        y_col = st.selectbox("Select Y-axis numeric column", numeric_cols, key="scatter_y")
-        if x_col and y_col:
-            fig, ax = plt.subplots()
-            ax.scatter(df[x_col], df[y_col], color='green')
-            ax.set_xlabel(x_col)
-            ax.set_ylabel(y_col)
-            ax.set_title(f"{y_col} vs {x_col}")
-            st.pyplot(fig)
-            buf = BytesIO()
-            fig.savefig(buf, format="png")
-            chart_images.append(buf)
-            plt.close(fig)
-
-    # Line chart
-    if numeric_cols:
-        st.subheader("📈 Line Chart")
-        line_col = st.selectbox("Select numeric column for Line chart", numeric_cols, key="line_col")
-        if line_col:
-            fig, ax = plt.subplots()
-            ax.plot(df[line_col], color='orange')
-            ax.set_title(f"Line chart of {line_col}")
-            st.pyplot(fig)
-            buf = BytesIO()
-            fig.savefig(buf, format="png")
-            chart_images.append(buf)
-            plt.close(fig)
-
-    # Area chart
-    if numeric_cols:
-        st.subheader("📊 Area Chart")
-        area_col = st.selectbox("Select numeric column for Area chart", numeric_cols, key="area_col")
-        if area_col:
-            fig, ax = plt.subplots()
-            ax.fill_between(df.index, df[area_col], color='lightgreen', alpha=0.6)
-            ax.set_title(f"Area chart of {area_col}")
-            st.pyplot(fig)
-            buf = BytesIO()
-            fig.savefig(buf, format="png")
-            chart_images.append(buf)
-            plt.close(fig)
-
-    # ------------------------------
-    # Auto-generated Results & Conclusion
-    # ------------------------------
+    # ------------------------
+    # Auto-generate Results & Conclusion
+    # ------------------------
     st.subheader("📝 Auto-generated Research Results & Conclusion")
-    result_text = f"The dataset has {df.shape[0]} rows and {df.shape[1]} columns. " \
-                  f"Numeric columns: {numeric_cols}, Categorical columns: {categorical_cols}."
-    st.text_area("Results", value=result_text, height=100)
-    st.text_area("Conclusion", value="The analysis provides insights into distribution and relationships between variables.", height=100)
+    result_text = f"The dataset contains {len(filtered_df)} rows and {len(filtered_df.columns)} columns."
+    conclusion_text = f"The summary and visualizations indicate trends and distributions of the dataset for research purposes."
 
-    # ------------------------------
-    # Download PDF
-    # ------------------------------
-    if st.button("📥 Download Full PDF Report"):
-        pdf_file = create_pdf(df, result_text, chart_images)
-        st.download_button("Download PDF", data=pdf_file, file_name="PharmaPulse_Report.pdf", mime="application/pdf")
+    st.text_area("Results", result_text, height=100)
+    st.text_area("Conclusion", conclusion_text, height=100)
+
+    # ------------------------
+    # PDF generation
+    # ------------------------
+    def create_pdf(df, results, charts):
+        pdf = FPDF()
+        pdf.set_auto_page_break(auto=True, margin=15)
+
+        # Title page
+        pdf.add_page()
+        pdf.set_font("Arial", "B", 20)
+        pdf.multi_cell(0, 10, "📊 PharmaPulse", align="C")
+        pdf.ln(10)
+        pdf.set_font("Arial", "", 12)
+        pdf.multi_cell(0, 10, "Generated by pharmapulsebydrk", align="C")
+
+        # Sample data
+        pdf.add_page()
+        pdf.set_font("Arial", "B", 16)
+        pdf.multi_cell(0, 10, "📋 Sample Data Preview")
+        pdf.set_font("Arial", "", 10)
+        # Convert first 10 rows to string
+        sample_str = df.head(10).to_string()
+        pdf.multi_cell(0, 6, sample_str)
+
+        # Results page
+        pdf.add_page()
+        pdf.set_font("Arial", "B", 16)
+        pdf.multi_cell(0, 10, "📝 Results")
+        pdf.set_font("Arial", "", 12)
+        pdf.multi_cell(0, 8, results)
+
+        # Add charts
+        for chart_path in charts:
+            pdf.add_page()
+            pdf.image(chart_path, x=10, y=20, w=180)
+            pdf.set_y(-15)
+            pdf.set_font("Arial", "I", 8)
+            pdf.cell(0, 10, "pharmapulsebydrk", 0, 0, "C")
+
+        # Conclusion
+        pdf.add_page()
+        pdf.set_font("Arial", "B", 16)
+        pdf.multi_cell(0, 10, "📝 Conclusion")
+        pdf.set_font("Arial", "", 12)
+        pdf.multi_cell(0, 8, conclusion_text)
+
+        # Cleanup temp chart files
+        for chart_path in charts:
+            if os.path.exists(chart_path):
+                os.remove(chart_path)
+
+        # Output PDF to buffer
+        buffer_path = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
+        pdf.output(buffer_path.name)
+        return buffer_path.name
+
+    pdf_file_path = create_pdf(filtered_df, result_text, chart_images)
+
+    with open(pdf_file_path, "rb") as f:
+        st.download_button("📥 Download PDF Report", data=f, file_name="PharmaPulse_Report.pdf", mime="application/pdf")
