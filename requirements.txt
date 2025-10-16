@@ -1,8 +1,9 @@
 streamlit
 pandas
 numpy
-matplotlib
+scipy
 seaborn
+matplotlib
 openpyxl
 fpdf
-scipy
+statsmodels
