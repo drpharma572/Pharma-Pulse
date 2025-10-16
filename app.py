@@ -1,144 +1,153 @@
 # app.py
 import streamlit as st
 import pandas as pd
+import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
-import numpy as np
-import uuid
+import io
+import tempfile
+import os
+from urllib.parse import quote
 
+# -----------------------------
+# App config
+# -----------------------------
 st.set_page_config(page_title="PharmaPulse DUS Dashboard", layout="wide")
-st.title("📊 PharmaPulse — Digital DUS & Data Visualization")
+st.title("📊 PharmaPulse — Digital DUS Model")
 st.markdown("**Developed by Dr. K | PharmaPulseByDrK**")
 
-# -------------------------------
-# Upload Section
-# -------------------------------
+# Temporary directory for shared files
+TEMP_DIR = tempfile.gettempdir()
+
+# -----------------------------
+# File upload
+# -----------------------------
 uploaded_file = st.file_uploader(
-    "Upload Excel/CSV file (XLSX, XLS, CSV)", 
+    "📂 Upload Excel or CSV file",
     type=["xlsx", "xls", "csv"]
 )
 
 if uploaded_file:
-    file_name = uploaded_file.name
-    # Load the data
+    # Load file
     try:
-        if file_name.endswith((".xlsx", ".xls")):
+        if uploaded_file.name.endswith(("xlsx", "xls")):
             df = pd.read_excel(uploaded_file)
         else:
             df = pd.read_csv(uploaded_file)
-        st.success(f"✅ Loaded: {file_name}")
+        st.success(f"✅ Loaded: {uploaded_file.name}")
     except Exception as e:
-        st.error(f"Error loading file: {e}")
+        st.error(f"❌ Failed to read file: {e}")
         st.stop()
 
-    # -------------------------------
-    # Display overview
-    # -------------------------------
-    st.subheader("📋 Data Preview (first 10 rows)")
+    # Display first 10 rows
+    st.subheader("### 📋 Data Preview (first 10 rows)")
     st.dataframe(df.head(10))
 
+    # Identify numeric and categorical columns
     numeric_cols = df.select_dtypes(include=np.number).columns.tolist()
-    categorical_cols = df.select_dtypes(include="object").columns.tolist()
+    categorical_cols = df.select_dtypes(include=['object', 'category']).columns.tolist()
+    st.markdown(f"**Numeric Columns:** {numeric_cols}")
+    st.markdown(f"**Categorical Columns:** {categorical_cols}")
 
-    st.markdown(f"**Detected numeric columns:** {numeric_cols}")
-    st.markdown(f"**Detected categorical columns:** {categorical_cols}")
-
-    # -------------------------------
-    # Optional filters
-    # -------------------------------
-    st.subheader("🧩 Apply Filters (Optional)")
+    # -----------------------------
+    # Quick Filters
+    # -----------------------------
+    st.subheader("### 🧩 Apply Filters (Optional)")
     filtered_df = df.copy()
     for col in categorical_cols:
-        options = filtered_df[col].unique().tolist()
-        selected = st.multiselect(f"Filter {col}", options=options, default=options)
-        filtered_df = filtered_df[filtered_df[col].isin(selected)]
-    st.write(f"Filtered Rows: {len(filtered_df)}")
+        unique_vals = filtered_df[col].dropna().unique().tolist()
+        if unique_vals:
+            sel = st.multiselect(f"Filter {col}", options=unique_vals, default=unique_vals)
+            filtered_df = filtered_df[filtered_df[col].isin(sel)]
+    st.write(f"Filtered Rows: {filtered_df.shape[0]}")
 
-    # -------------------------------
-    # Display full data option
-    # -------------------------------
-    if st.checkbox("📄 Display Full Filtered Data"):
-        st.dataframe(filtered_df)
-
-    # -------------------------------
-    # Descriptive statistics
-    # -------------------------------
-    st.subheader("📈 Descriptive Statistics")
+    # -----------------------------
+    # Descriptive Statistics
+    # -----------------------------
+    st.subheader("### 📈 Descriptive Statistics (Auto)")
     st.dataframe(filtered_df.describe(include='all').T)
 
-    # -------------------------------
-    # Visualization Section
-    # -------------------------------
-    st.subheader("🎨 Data Visualizations")
+    # -----------------------------
+    # Data Visualizations
+    # -----------------------------
+    st.subheader("### 🎨 Data Visualizations")
 
-    # Bar Chart
+    # Strip plot for continuous vs categorical
     if numeric_cols and categorical_cols:
-        st.markdown("**Bar Chart**")
-        num_col = st.selectbox("Select Numeric Column", numeric_cols, key="bar_num")
-        cat_col = st.selectbox("Select Categorical Column", categorical_cols, key="bar_cat")
-        bar_data = filtered_df.groupby(cat_col)[num_col].sum().reset_index()
-        fig, ax = plt.subplots()
-        sns.barplot(x=cat_col, y=num_col, data=bar_data, ax=ax)
-        ax.set_title(f"{num_col} by {cat_col}")
+        num_col = st.selectbox("Select numeric column for Strip chart", numeric_cols)
+        cat_col = st.selectbox("Select categorical column for Strip chart", categorical_cols)
+        fig, ax = plt.subplots(figsize=(8, 5))
+        sns.stripplot(x=cat_col, y=num_col, data=filtered_df, jitter=True, ax=ax)
+        ax.set_title(f"{num_col} by {cat_col} (Strip plot for continuous values)")
         st.pyplot(fig)
 
     # Histogram
     if numeric_cols:
-        st.markdown("**Histogram**")
-        hist_col = st.selectbox("Select Numeric Column for Histogram", numeric_cols, key="hist")
-        fig, ax = plt.subplots()
-        sns.histplot(filtered_df[hist_col], kde=False, bins=15, ax=ax)
-        ax.set_title(f"Distribution of {hist_col}")
+        hist_col = st.selectbox("Select numeric column for Histogram", numeric_cols)
+        fig, ax = plt.subplots(figsize=(8, 5))
+        sns.histplot(filtered_df[hist_col].dropna(), bins=10, kde=True, ax=ax)
+        ax.set_title(f"Histogram of {hist_col}")
         st.pyplot(fig)
 
-    # Scatter Plot
+    # Scatter plot
     if len(numeric_cols) >= 2:
-        st.markdown("**Scatter Plot**")
-        x_col = st.selectbox("X-axis", numeric_cols, key="scatter_x")
-        y_col = st.selectbox("Y-axis", numeric_cols, key="scatter_y")
-        fig, ax = plt.subplots()
-        sns.scatterplot(x=filtered_df[x_col], y=filtered_df[y_col], ax=ax)
-        ax.set_title(f"{y_col} vs {x_col}")
+        x_col = st.selectbox("X-axis for Scatter plot", numeric_cols)
+        y_col = st.selectbox("Y-axis for Scatter plot", numeric_cols)
+        fig, ax = plt.subplots(figsize=(8, 5))
+        hue_col = categorical_cols[0] if categorical_cols else None
+        sns.scatterplot(x=filtered_df[x_col], y=filtered_df[y_col],
+                        hue=filtered_df[hue_col] if hue_col else None, ax=ax)
+        ax.set_title(f"Scatter Plot: {y_col} vs {x_col}")
         st.pyplot(fig)
 
-    # Pie Chart
+    # Pie chart
     if categorical_cols:
-        st.markdown("**Pie Chart**")
-        pie_col = st.selectbox("Select Categorical Column", categorical_cols, key="pie")
+        pie_col = st.selectbox("Categorical column for Pie chart", categorical_cols)
         pie_data = filtered_df[pie_col].value_counts()
-        fig, ax = plt.subplots()
+        fig, ax = plt.subplots(figsize=(6, 6))
         ax.pie(pie_data.values, labels=pie_data.index, autopct="%1.1f%%")
-        ax.set_title(f"Pie chart of {pie_col}")
+        ax.set_title(f"Pie Chart of {pie_col}")
         st.pyplot(fig)
 
-    # Line Chart
+    # Line chart
     if numeric_cols:
-        st.markdown("**Line Chart**")
-        line_col = st.selectbox("Select Numeric Column for Line Chart", numeric_cols, key="line")
-        fig, ax = plt.subplots()
-        ax.plot(filtered_df[line_col])
-        ax.set_title(f"Line chart of {line_col}")
+        line_col = st.selectbox("Numeric column for Line chart", numeric_cols)
+        fig, ax = plt.subplots(figsize=(8, 5))
+        filtered_df[line_col].plot.line(ax=ax)
+        ax.set_title(f"Line Chart of {line_col}")
         st.pyplot(fig)
 
-    # Correlation Heatmap
+    # Correlation heatmap
     if numeric_cols:
-        st.markdown("**Correlation Heatmap**")
-        fig, ax = plt.subplots()
-        sns.heatmap(filtered_df[numeric_cols].corr(), annot=True, cmap="coolwarm", ax=ax)
+        st.subheader("Correlation Heatmap (Numeric columns)")
+        corr = filtered_df[numeric_cols].corr()
+        fig, ax = plt.subplots(figsize=(8, 6))
+        sns.heatmap(corr, annot=True, cmap="coolwarm", ax=ax)
         st.pyplot(fig)
 
-    # -------------------------------
-    # Auto Results & Conclusion
-    # -------------------------------
-    st.subheader("🧠 Auto-generated Results & Conclusion")
-    st.text_area("Results", f"Data contains {len(filtered_df)} rows and {len(filtered_df.columns)} columns.")
-    st.text_area("Conclusion", "Visualizations suggest trends and distributions. Further statistical analysis recommended.")
+    # Pictogram
+    if categorical_cols:
+        pict_col = st.selectbox("Column for Pictogram representation", categorical_cols)
+        counts = filtered_df[pict_col].value_counts()
+        fig, ax = plt.subplots(figsize=(8, 3))
+        ax.bar(counts.index, counts.values)
+        ax.set_title(f"Pictogram of {pict_col}")
+        st.pyplot(fig)
 
-    # -------------------------------
-    # Shareable Link
-    # -------------------------------
-    st.subheader("📤 Generate Shareable Link")
-    file_id = str(uuid.uuid4())
-    APP_BASE_URL = "https://your-app-name.streamlit.app"  # replace with your deployed URL
-    share_url = f"{APP_BASE_URL}?file_id={file_id}"
-    st.info(f"Shareable Link: [Click Here]({share_url})")
+    # -----------------------------
+    # Print / View Filtered Data
+    # -----------------------------
+    st.subheader("### 🖨️ Print / View Filtered Data")
+    st.dataframe(filtered_df)
+
+    # -----------------------------
+    # Shareable Link (Large Files)
+    # -----------------------------
+    st.subheader("### 🔗 Shareable Link for Filtered Data")
+    # Save filtered data to temp CSV file
+    safe_filename = f"filtered_data_{uploaded_file.name.split('.')[0]}.csv"
+    temp_file_path = os.path.join(TEMP_DIR, safe_filename)
+    filtered_df.to_csv(temp_file_path, index=False)
+
+    # Generate link
+    st.markdown(f"[Click here to download filtered data]({quote(temp_file_path)})", unsafe_allow_html=True)
