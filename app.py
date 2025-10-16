@@ -16,7 +16,7 @@ st.set_page_config(page_title="PharmaPulse DUS Dashboard", layout="wide")
 st.title("📊 PharmaPulse — Digital DUS Model")
 st.markdown("**Developed by Dr. K | PharmaPulseByDrK**")
 
-# Temporary directory for shared files
+# Temporary directory for shared visualization files
 TEMP_DIR = tempfile.gettempdir()
 
 # -----------------------------
@@ -62,92 +62,103 @@ if uploaded_file:
     st.write(f"Filtered Rows: {filtered_df.shape[0]}")
 
     # -----------------------------
-    # Descriptive Statistics
-    # -----------------------------
-    st.subheader("### 📈 Descriptive Statistics (Auto)")
-    st.dataframe(filtered_df.describe(include='all').T)
-
-    # -----------------------------
     # Data Visualizations
     # -----------------------------
     st.subheader("### 🎨 Data Visualizations")
+    chart_images = []
 
-    # Strip plot for continuous vs categorical
+    # Bar chart
     if numeric_cols and categorical_cols:
-        num_col = st.selectbox("Select numeric column for Strip chart", numeric_cols)
-        cat_col = st.selectbox("Select categorical column for Strip chart", categorical_cols)
+        num_col = st.selectbox("Select numeric column for Bar chart", numeric_cols, key="bar_num")
+        cat_col = st.selectbox("Select categorical column for Bar chart", categorical_cols, key="bar_cat")
         fig, ax = plt.subplots(figsize=(8, 5))
-        sns.stripplot(x=cat_col, y=num_col, data=filtered_df, jitter=True, ax=ax)
-        ax.set_title(f"{num_col} by {cat_col} (Strip plot for continuous values)")
+        sns.barplot(x=cat_col, y=num_col, data=filtered_df, ci=None, ax=ax)
+        ax.set_title(f"{num_col} by {cat_col}")
         st.pyplot(fig)
+        # Save figure
+        bar_buf = io.BytesIO()
+        fig.savefig(bar_buf, format='png')
+        chart_images.append(bar_buf)
 
     # Histogram
     if numeric_cols:
-        hist_col = st.selectbox("Select numeric column for Histogram", numeric_cols)
+        hist_col = st.selectbox("Select numeric column for Histogram", numeric_cols, key="hist_col")
         fig, ax = plt.subplots(figsize=(8, 5))
-        sns.histplot(filtered_df[hist_col].dropna(), bins=10, kde=True, ax=ax)
+        sns.histplot(filtered_df[hist_col].dropna(), bins=10, kde=False, ax=ax)
         ax.set_title(f"Histogram of {hist_col}")
         st.pyplot(fig)
+        hist_buf = io.BytesIO()
+        fig.savefig(hist_buf, format='png')
+        chart_images.append(hist_buf)
 
     # Scatter plot
     if len(numeric_cols) >= 2:
-        x_col = st.selectbox("X-axis for Scatter plot", numeric_cols)
-        y_col = st.selectbox("Y-axis for Scatter plot", numeric_cols)
+        x_col = st.selectbox("X-axis for Scatter plot", numeric_cols, key="scatter_x")
+        y_col = st.selectbox("Y-axis for Scatter plot", numeric_cols, key="scatter_y")
         fig, ax = plt.subplots(figsize=(8, 5))
         hue_col = categorical_cols[0] if categorical_cols else None
         sns.scatterplot(x=filtered_df[x_col], y=filtered_df[y_col],
                         hue=filtered_df[hue_col] if hue_col else None, ax=ax)
         ax.set_title(f"Scatter Plot: {y_col} vs {x_col}")
         st.pyplot(fig)
+        scatter_buf = io.BytesIO()
+        fig.savefig(scatter_buf, format='png')
+        chart_images.append(scatter_buf)
 
     # Pie chart
     if categorical_cols:
-        pie_col = st.selectbox("Categorical column for Pie chart", categorical_cols)
+        pie_col = st.selectbox("Categorical column for Pie chart", categorical_cols, key="pie_col")
         pie_data = filtered_df[pie_col].value_counts()
         fig, ax = plt.subplots(figsize=(6, 6))
         ax.pie(pie_data.values, labels=pie_data.index, autopct="%1.1f%%")
         ax.set_title(f"Pie Chart of {pie_col}")
         st.pyplot(fig)
+        pie_buf = io.BytesIO()
+        fig.savefig(pie_buf, format='png')
+        chart_images.append(pie_buf)
 
     # Line chart
     if numeric_cols:
-        line_col = st.selectbox("Numeric column for Line chart", numeric_cols)
+        line_col = st.selectbox("Numeric column for Line chart", numeric_cols, key="line_col")
         fig, ax = plt.subplots(figsize=(8, 5))
         filtered_df[line_col].plot.line(ax=ax)
         ax.set_title(f"Line Chart of {line_col}")
         st.pyplot(fig)
+        line_buf = io.BytesIO()
+        fig.savefig(line_buf, format='png')
+        chart_images.append(line_buf)
 
     # Correlation heatmap
     if numeric_cols:
-        st.subheader("Correlation Heatmap (Numeric columns)")
+        st.subheader("Correlation Heatmap")
         corr = filtered_df[numeric_cols].corr()
         fig, ax = plt.subplots(figsize=(8, 6))
         sns.heatmap(corr, annot=True, cmap="coolwarm", ax=ax)
         st.pyplot(fig)
+        corr_buf = io.BytesIO()
+        fig.savefig(corr_buf, format='png')
+        chart_images.append(corr_buf)
 
     # Pictogram
     if categorical_cols:
-        pict_col = st.selectbox("Column for Pictogram representation", categorical_cols)
+        pict_col = st.selectbox("Column for Pictogram", categorical_cols, key="pict_col")
         counts = filtered_df[pict_col].value_counts()
         fig, ax = plt.subplots(figsize=(8, 3))
         ax.bar(counts.index, counts.values)
         ax.set_title(f"Pictogram of {pict_col}")
         st.pyplot(fig)
+        pict_buf = io.BytesIO()
+        fig.savefig(pict_buf, format='png')
+        chart_images.append(pict_buf)
 
     # -----------------------------
-    # Print / View Filtered Data
+    # Shareable Link (Visualizations)
     # -----------------------------
-    st.subheader("### 🖨️ Print / View Filtered Data")
-    st.dataframe(filtered_df)
-
-    # -----------------------------
-    # Shareable Link (Large Files)
-    # -----------------------------
-    st.subheader("### 🔗 Shareable Link for Filtered Data")
-    # Save filtered data to temp CSV file
-    safe_filename = f"filtered_data_{uploaded_file.name.split('.')[0]}.csv"
-    temp_file_path = os.path.join(TEMP_DIR, safe_filename)
-    filtered_df.to_csv(temp_file_path, index=False)
-
-    # Generate link
-    st.markdown(f"[Click here to download filtered data]({quote(temp_file_path)})", unsafe_allow_html=True)
+    st.subheader("### 🔗 Shareable Link for Visualizations")
+    zip_path = os.path.join(TEMP_DIR, f"visualizations_{uploaded_file.name.split('.')[0]}.zip")
+    import zipfile
+    with zipfile.ZipFile(zip_path, 'w') as zipf:
+        for i, buf in enumerate(chart_images):
+            buf.seek(0)
+            zipf.writestr(f"chart_{i+1}.png", buf.read())
+    st.markdown(f"[Click here to download all charts as ZIP]({quote(zip_path)})", unsafe_allow_html=True)
