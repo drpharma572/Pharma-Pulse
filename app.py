@@ -1,4 +1,5 @@
-# app.py st.set_page_config(page_title="PharmaPulse", page_icon="💊", layout="wide", initial_sidebar_state="expanded")
+# app.py
+st.set_page_config(page_title="PharmaPulse", page_icon="💊", layout="wide", initial_sidebar_state="expanded")
 st.markdown("""
     <style>
         #MainMenu {visibility: hidden;}
