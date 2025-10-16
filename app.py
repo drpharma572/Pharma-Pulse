@@ -1,136 +1,137 @@
 # app.py
 import streamlit as st
 import pandas as pd
-import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 import base64
-import urllib.parse
+from io import BytesIO
 
-st.set_page_config(page_title="PharmaPulse DUS Dashboard", layout="wide")
-st.title("📊 PharmaPulse — Digital DUS Model")
+st.set_page_config(page_title="PharmaPulse — Digital DUS Model", layout="wide")
+st.title("📊 PharmaPulse — Digital Drug Utilization Study (DUS) Model")
 st.markdown("**Developed by Dr. K | PharmaPulseByDrK**")
+st.write("A digital visualization platform for hospital-based DUS — Govt. & Private institutions.")
 
-# ------------------------
-# File Upload
-# ------------------------
+# -----------------------------
+# File upload
+# -----------------------------
 uploaded_file = st.file_uploader(
-    "📂 Upload Excel/CSV file (XLSX, XLS, CSV)", 
-    type=["xlsx", "xls", "csv"]
+    "📂 Upload Excel or CSV file",
+    type=["xlsx", "xls", "csv"],
+    help="Limit 200MB per file"
 )
 
-def load_file(file):
-    if file.name.endswith(".csv"):
-        return pd.read_csv(file)
-    else:
-        return pd.read_excel(file)
-
-# ------------------------
-# Load data and preview
-# ------------------------
+# -----------------------------
+# Load file and detect numeric/categorical columns
+# -----------------------------
 if uploaded_file:
-    df = load_file(uploaded_file)
+    if uploaded_file.name.endswith(".csv"):
+        df = pd.read_csv(uploaded_file)
+    else:
+        df = pd.read_excel(uploaded_file)
+
     st.success(f"✅ Loaded: {uploaded_file.name}")
-    
+
+    numeric_cols = df.select_dtypes(include="number").columns.tolist()
+    categorical_cols = df.select_dtypes(include="object").columns.tolist()
+
     st.subheader("📋 Data Overview")
-    st.write("**Numeric Columns:**", df.select_dtypes(include=np.number).columns.tolist())
-    st.write("**Categorical Columns:**", df.select_dtypes(include="object").columns.tolist())
-    
+    st.write(f"**Numeric Columns:** {numeric_cols}")
+    st.write(f"**Categorical Columns:** {categorical_cols}")
+
+    # -----------------------------
+    # Filters
+    # -----------------------------
     st.subheader("🧩 Apply Filters (Optional)")
     filtered_df = df.copy()
-    for col in df.select_dtypes(include=["object", "category"]).columns:
-        options = st.multiselect(f"Filter {col}", options=df[col].unique())
+    for col in categorical_cols:
+        options = st.multiselect(f"Filter {col}", df[col].unique(), default=None)
         if options:
             filtered_df = filtered_df[filtered_df[col].isin(options)]
-    st.write(f"Filtered Rows: {len(filtered_df)}")
-    
-    # ------------------------
-    # Descriptive Statistics
-    # ------------------------
-    st.subheader("📈 Descriptive Statistics")
-    st.write(filtered_df.describe(include="all"))
 
-    # ------------------------
-    # Visualizations
-    # ------------------------
+    st.write(f"Filtered Rows: {filtered_df.shape[0]}")
+
+    # -----------------------------
+    # Descriptive stats
+    # -----------------------------
+    st.subheader("📈 Descriptive Statistics")
+    st.dataframe(filtered_df.describe(include="all"))
+
+    # -----------------------------
+    # Charts
+    # -----------------------------
     st.subheader("🎨 Data Visualizations")
-    
-    numeric_cols = filtered_df.select_dtypes(include=np.number).columns.tolist()
-    categorical_cols = filtered_df.select_dtypes(include="object").columns.tolist()
-    
-    # Bar chart
-    if numeric_cols and categorical_cols:
+
+    # Bar Chart — only categorical x-axis
+    if categorical_cols and numeric_cols:
         st.markdown("**Bar Chart**")
-        num_col = st.selectbox("Select Numeric Column", numeric_cols, key="bar_num")
-        cat_col = st.selectbox("Select Categorical Column", categorical_cols, key="bar_cat")
-        bar_data = filtered_df.groupby(cat_col)[num_col].sum().reset_index()
-        fig, ax = plt.subplots()
-        sns.barplot(x=cat_col, y=num_col, data=bar_data, ax=ax)
-        ax.set_title(f"{num_col} by {cat_col}")
-        st.pyplot(fig, use_container_width=True)
-    
-    # Histogram
+        cat_col = st.selectbox("Select Categorical Column for Bar Chart", categorical_cols)
+        num_col = st.selectbox("Select Numeric Column for Bar Chart", numeric_cols)
+        if cat_col and num_col:
+            fig, ax = plt.subplots()
+            sns.barplot(x=cat_col, y=num_col, data=filtered_df, ci=None)
+            ax.set_title(f"{num_col} by {cat_col}")
+            st.pyplot(fig)
+
+    # Histogram — for numeric columns
     if numeric_cols:
         st.markdown("**Histogram**")
         hist_col = st.selectbox("Select Numeric Column for Histogram", numeric_cols, key="hist")
-        fig2, ax2 = plt.subplots()
-        sns.histplot(filtered_df[hist_col], bins=10, kde=False, ax=ax2)
-        ax2.set_title(f"Histogram of {hist_col}")
-        st.pyplot(fig2, use_container_width=True)
-    
-    # Scatter plot
+        if hist_col:
+            fig, ax = plt.subplots()
+            ax.hist(filtered_df[hist_col].dropna(), bins=15, color="skyblue", edgecolor="black")
+            ax.set_title(f"Histogram of {hist_col}")
+            st.pyplot(fig)
+
+    # Scatter Plot
     if len(numeric_cols) >= 2:
         st.markdown("**Scatter Plot**")
-        x_col = st.selectbox("X-axis", numeric_cols, key="scatter_x")
-        y_col = st.selectbox("Y-axis", numeric_cols, key="scatter_y")
-        fig3, ax3 = plt.subplots()
-        sns.scatterplot(x=filtered_df[x_col], y=filtered_df[y_col], ax=ax3)
-        ax3.set_title(f"{y_col} vs {x_col}")
-        st.pyplot(fig3, use_container_width=True)
-    
-    # Pie chart
+        x_col = st.selectbox("Select X-axis Numeric Column", numeric_cols, key="scatter_x")
+        y_col = st.selectbox("Select Y-axis Numeric Column", numeric_cols, key="scatter_y")
+        fig, ax = plt.subplots()
+        ax.scatter(filtered_df[x_col], filtered_df[y_col], alpha=0.7, color="green")
+        ax.set_xlabel(x_col)
+        ax.set_ylabel(y_col)
+        ax.set_title(f"{y_col} vs {x_col}")
+        st.pyplot(fig)
+
+    # Pie Chart
     if categorical_cols:
         st.markdown("**Pie Chart**")
-        pie_col = st.selectbox("Select Categorical Column", categorical_cols, key="pie")
+        pie_col = st.selectbox("Select Categorical Column for Pie Chart", categorical_cols, key="pie")
         pie_data = filtered_df[pie_col].value_counts()
-        fig4, ax4 = plt.subplots()
-        ax4.pie(pie_data.values, labels=pie_data.index, autopct="%1.1f%%")
-        ax4.set_title(f"Pie Chart of {pie_col}")
-        st.pyplot(fig4, use_container_width=True)
-    
-    # Line chart
+        fig, ax = plt.subplots()
+        ax.pie(pie_data.values, labels=pie_data.index, autopct="%1.1f%%")
+        ax.set_title(f"Pie Chart of {pie_col}")
+        st.pyplot(fig)
+
+    # Line Chart — numeric
     if numeric_cols:
         st.markdown("**Line Chart**")
         line_col = st.selectbox("Select Numeric Column for Line Chart", numeric_cols, key="line")
-        st.line_chart(filtered_df[line_col])
-    
-    # ------------------------
-    # Auto-generated Results & Conclusion
-    # ------------------------
+        fig, ax = plt.subplots()
+        ax.plot(filtered_df[line_col].dropna(), marker='o')
+        ax.set_title(f"Line Chart of {line_col}")
+        st.pyplot(fig)
+
+    # Correlation Heatmap
+    if len(numeric_cols) >= 2:
+        st.markdown("**Correlation Heatmap (Numeric Columns)**")
+        fig, ax = plt.subplots(figsize=(8,6))
+        sns.heatmap(filtered_df[numeric_cols].corr(), annot=True, cmap="coolwarm", ax=ax)
+        st.pyplot(fig)
+
+    # -----------------------------
+    # Auto-generated results & conclusion
+    # -----------------------------
     st.subheader("🧠 Auto-generated Results & Conclusion")
-    results_text = f"Results: Data contains {len(filtered_df)} rows and {len(filtered_df.columns)} columns."
-    conclusion_text = "Conclusion: Descriptive statistics and charts generated for uploaded DUS data."
-    st.text(results_text)
-    st.text(conclusion_text)
+    st.text_area("Results", value="Results summary will be generated based on uploaded data.", height=100)
+    st.text_area("Conclusion", value="Conclusion summary will be generated based on uploaded data.", height=100)
 
-    # ------------------------
-    # Shareable Link
-    # ------------------------
-    st.subheader("🔗 Shareable Link")
-    csv_bytes = filtered_df.to_csv(index=False).encode("utf-8")
-    b64_csv = base64.b64encode(csv_bytes).decode()
-    params = {"data": b64_csv}
-    query_str = urllib.parse.urlencode(params)
-    shareable_link = f"{st.runtime.scriptrunner.get_url()}?{query_str}" if hasattr(st.runtime, "scriptrunner") else f"?{query_str}"
-    st.write(f"[Click here to share this report]({shareable_link})")
-
-# ------------------------
-# Load shared data from URL
-# ------------------------
-query_params = st.query_params
-if "data" in query_params:
-    b64_csv = query_params["data"][0]
-    decoded = base64.b64decode(b64_csv)
-    df_shared = pd.read_csv(pd.compat.StringIO(decoded.decode("utf-8")))
-    st.info("Loaded shared report from link")
-    st.dataframe(df_shared.head())
+    # -----------------------------
+    # Shareable link generation
+    # -----------------------------
+    st.subheader("🔗 Generate Shareable Link")
+    csv_bytes = filtered_df.to_csv(index=False).encode()
+    b64 = base64.b64encode(csv_bytes).decode()
+    shareable_url = f"{st.secrets.get('APP_URL', 'https://your-app-url.streamlit.app')}?data={b64}"
+    st.markdown(f"[Click here to share your data]({shareable_url})", unsafe_allow_html=True)
