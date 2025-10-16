@@ -1,4 +1,12 @@
-# app.py
+# app.py st.set_page_config(page_title="PharmaPulse", page_icon="💊", layout="wide", initial_sidebar_state="expanded")
+st.markdown("""
+    <style>
+        #MainMenu {visibility: hidden;}
+        footer {visibility: hidden;}
+        header {visibility: hidden;}
+        [data-testid="stToolbar"] {display: none !important;}
+    </style>
+""", unsafe_allow_html=True)
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
