@@ -55,10 +55,10 @@ if uploaded_file:
     # ------------------------
     st.subheader("🎨 Data Visualizations")
     
-    # Bar chart
     numeric_cols = filtered_df.select_dtypes(include=np.number).columns.tolist()
     categorical_cols = filtered_df.select_dtypes(include="object").columns.tolist()
     
+    # Bar chart
     if numeric_cols and categorical_cols:
         st.markdown("**Bar Chart**")
         num_col = st.selectbox("Select Numeric Column", numeric_cols, key="bar_num")
@@ -78,7 +78,7 @@ if uploaded_file:
         ax2.set_title(f"Histogram of {hist_col}")
         st.pyplot(fig2, use_container_width=True)
     
-    # Scatter
+    # Scatter plot
     if len(numeric_cols) >= 2:
         st.markdown("**Scatter Plot**")
         x_col = st.selectbox("X-axis", numeric_cols, key="scatter_x")
@@ -121,13 +121,13 @@ if uploaded_file:
     b64_csv = base64.b64encode(csv_bytes).decode()
     params = {"data": b64_csv}
     query_str = urllib.parse.urlencode(params)
-    shareable_link = f"{st.experimental_get_url()}?{query_str}"
+    shareable_link = f"{st.runtime.scriptrunner.get_url()}?{query_str}" if hasattr(st.runtime, "scriptrunner") else f"?{query_str}"
     st.write(f"[Click here to share this report]({shareable_link})")
 
 # ------------------------
 # Load shared data from URL
 # ------------------------
-query_params = st.experimental_get_query_params()
+query_params = st.query_params
 if "data" in query_params:
     b64_csv = query_params["data"][0]
     decoded = base64.b64decode(b64_csv)
