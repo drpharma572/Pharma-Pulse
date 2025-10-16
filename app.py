@@ -1,137 +1,161 @@
-# app.py
 import streamlit as st
 import pandas as pd
+import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
-import base64
-from io import BytesIO
+import uuid
+import os
+import pickle
+import tempfile
 
-st.set_page_config(page_title="PharmaPulse — Digital DUS Model", layout="wide")
-st.title("📊 PharmaPulse — Digital Drug Utilization Study (DUS) Model")
+# ------------------------
+# App Config
+# ------------------------
+st.set_page_config(page_title="PharmaPulse — DUS Digital Model", layout="wide")
+st.title("📊 PharmaPulse — Digital DUS Model")
 st.markdown("**Developed by Dr. K | PharmaPulseByDrK**")
-st.write("A digital visualization platform for hospital-based DUS — Govt. & Private institutions.")
 
-# -----------------------------
-# File upload
-# -----------------------------
-uploaded_file = st.file_uploader(
-    "📂 Upload Excel or CSV file",
-    type=["xlsx", "xls", "csv"],
-    help="Limit 200MB per file"
-)
+# ------------------------
+# Temp storage for shared links
+# ------------------------
+SHARE_DIR = "shared_files"
+os.makedirs(SHARE_DIR, exist_ok=True)
 
-# -----------------------------
-# Load file and detect numeric/categorical columns
-# -----------------------------
-if uploaded_file:
-    if uploaded_file.name.endswith(".csv"):
-        df = pd.read_csv(uploaded_file)
-    else:
-        df = pd.read_excel(uploaded_file)
+# ------------------------
+# Helper functions
+# ------------------------
+def save_session(data, charts, results, conclusion):
+    file_id = str(uuid.uuid4())
+    path = os.path.join(SHARE_DIR, f"{file_id}.pkl")
+    with open(path, "wb") as f:
+        pickle.dump({"data": data, "charts": charts, "results": results, "conclusion": conclusion}, f)
+    return file_id
 
-    st.success(f"✅ Loaded: {uploaded_file.name}")
+def load_session(file_id):
+    path = os.path.join(SHARE_DIR, f"{file_id}.pkl")
+    if os.path.exists(path):
+        with open(path, "rb") as f:
+            return pickle.load(f)
+    return None
 
-    numeric_cols = df.select_dtypes(include="number").columns.tolist()
+def generate_charts(df):
+    charts = {}
+    numeric_cols = df.select_dtypes(include=np.number).columns.tolist()
     categorical_cols = df.select_dtypes(include="object").columns.tolist()
 
-    st.subheader("📋 Data Overview")
-    st.write(f"**Numeric Columns:** {numeric_cols}")
-    st.write(f"**Categorical Columns:** {categorical_cols}")
-
-    # -----------------------------
-    # Filters
-    # -----------------------------
-    st.subheader("🧩 Apply Filters (Optional)")
-    filtered_df = df.copy()
-    for col in categorical_cols:
-        options = st.multiselect(f"Filter {col}", df[col].unique(), default=None)
-        if options:
-            filtered_df = filtered_df[filtered_df[col].isin(options)]
-
-    st.write(f"Filtered Rows: {filtered_df.shape[0]}")
-
-    # -----------------------------
-    # Descriptive stats
-    # -----------------------------
-    st.subheader("📈 Descriptive Statistics")
-    st.dataframe(filtered_df.describe(include="all"))
-
-    # -----------------------------
-    # Charts
-    # -----------------------------
-    st.subheader("🎨 Data Visualizations")
-
-    # Bar Chart — only categorical x-axis
-    if categorical_cols and numeric_cols:
-        st.markdown("**Bar Chart**")
-        cat_col = st.selectbox("Select Categorical Column for Bar Chart", categorical_cols)
-        num_col = st.selectbox("Select Numeric Column for Bar Chart", numeric_cols)
-        if cat_col and num_col:
-            fig, ax = plt.subplots()
-            sns.barplot(x=cat_col, y=num_col, data=filtered_df, ci=None)
-            ax.set_title(f"{num_col} by {cat_col}")
-            st.pyplot(fig)
-
-    # Histogram — for numeric columns
-    if numeric_cols:
-        st.markdown("**Histogram**")
-        hist_col = st.selectbox("Select Numeric Column for Histogram", numeric_cols, key="hist")
-        if hist_col:
-            fig, ax = plt.subplots()
-            ax.hist(filtered_df[hist_col].dropna(), bins=15, color="skyblue", edgecolor="black")
-            ax.set_title(f"Histogram of {hist_col}")
-            st.pyplot(fig)
-
-    # Scatter Plot
-    if len(numeric_cols) >= 2:
-        st.markdown("**Scatter Plot**")
-        x_col = st.selectbox("Select X-axis Numeric Column", numeric_cols, key="scatter_x")
-        y_col = st.selectbox("Select Y-axis Numeric Column", numeric_cols, key="scatter_y")
+    # Bar Chart (first numeric vs first categorical)
+    if numeric_cols and categorical_cols:
         fig, ax = plt.subplots()
-        ax.scatter(filtered_df[x_col], filtered_df[y_col], alpha=0.7, color="green")
-        ax.set_xlabel(x_col)
-        ax.set_ylabel(y_col)
-        ax.set_title(f"{y_col} vs {x_col}")
-        st.pyplot(fig)
+        bar_data = df.groupby(categorical_cols[0])[numeric_cols[0]].mean().reset_index()
+        sns.barplot(x=categorical_cols[0], y=numeric_cols[0], data=bar_data, ax=ax)
+        ax.set_title(f"{numeric_cols[0]} by {categorical_cols[0]}")
+        charts["bar"] = fig
 
-    # Pie Chart
+    # Histogram (first numeric)
+    if numeric_cols:
+        fig, ax = plt.subplots()
+        df[numeric_cols[0]].plot(kind="hist", bins=10, ax=ax)
+        ax.set_title(f"Histogram of {numeric_cols[0]}")
+        charts["hist"] = fig
+
+    # Pie (first categorical)
     if categorical_cols:
-        st.markdown("**Pie Chart**")
-        pie_col = st.selectbox("Select Categorical Column for Pie Chart", categorical_cols, key="pie")
-        pie_data = filtered_df[pie_col].value_counts()
         fig, ax = plt.subplots()
+        pie_data = df[categorical_cols[0]].value_counts()
         ax.pie(pie_data.values, labels=pie_data.index, autopct="%1.1f%%")
-        ax.set_title(f"Pie Chart of {pie_col}")
-        st.pyplot(fig)
+        ax.set_title(f"Pie Chart of {categorical_cols[0]}")
+        charts["pie"] = fig
 
-    # Line Chart — numeric
-    if numeric_cols:
-        st.markdown("**Line Chart**")
-        line_col = st.selectbox("Select Numeric Column for Line Chart", numeric_cols, key="line")
-        fig, ax = plt.subplots()
-        ax.plot(filtered_df[line_col].dropna(), marker='o')
-        ax.set_title(f"Line Chart of {line_col}")
-        st.pyplot(fig)
-
-    # Correlation Heatmap
+    # Scatter (first 2 numeric)
     if len(numeric_cols) >= 2:
-        st.markdown("**Correlation Heatmap (Numeric Columns)**")
-        fig, ax = plt.subplots(figsize=(8,6))
-        sns.heatmap(filtered_df[numeric_cols].corr(), annot=True, cmap="coolwarm", ax=ax)
-        st.pyplot(fig)
+        fig, ax = plt.subplots()
+        sns.scatterplot(x=numeric_cols[0], y=numeric_cols[1], data=df, ax=ax)
+        ax.set_title(f"Scatter: {numeric_cols[0]} vs {numeric_cols[1]}")
+        charts["scatter"] = fig
 
-    # -----------------------------
-    # Auto-generated results & conclusion
-    # -----------------------------
-    st.subheader("🧠 Auto-generated Results & Conclusion")
-    st.text_area("Results", value="Results summary will be generated based on uploaded data.", height=100)
-    st.text_area("Conclusion", value="Conclusion summary will be generated based on uploaded data.", height=100)
+    # Line chart (first numeric)
+    if numeric_cols:
+        fig, ax = plt.subplots()
+        df[numeric_cols[0]].plot(kind="line", ax=ax)
+        ax.set_title(f"Line Chart of {numeric_cols[0]}")
+        charts["line"] = fig
 
-    # -----------------------------
-    # Shareable link generation
-    # -----------------------------
-    st.subheader("🔗 Generate Shareable Link")
-    csv_bytes = filtered_df.to_csv(index=False).encode()
-    b64 = base64.b64encode(csv_bytes).decode()
-    shareable_url = f"{st.secrets.get('APP_URL', 'https://your-app-url.streamlit.app')}?data={b64}"
-    st.markdown(f"[Click here to share your data]({shareable_url})", unsafe_allow_html=True)
+    # Correlation heatmap
+    if len(numeric_cols) > 1:
+        fig, ax = plt.subplots()
+        sns.heatmap(df[numeric_cols].corr(), annot=True, cmap="coolwarm", ax=ax)
+        ax.set_title("Correlation Heatmap")
+        charts["heatmap"] = fig
+
+    return charts
+
+def auto_results(df):
+    numeric_cols = df.select_dtypes(include=np.number).columns.tolist()
+    categorical_cols = df.select_dtypes(include="object").columns.tolist()
+    results = "Descriptive Summary:\n"
+    if numeric_cols:
+        results += df[numeric_cols].describe().to_string()
+    if categorical_cols:
+        results += "\n\nCategorical Counts:\n"
+        results += df[categorical_cols].apply(pd.Series.value_counts).to_string()
+    return results
+
+def auto_conclusion(results_text):
+    return "Auto-generated Conclusion: Review the above summary to interpret trends and patterns for research purposes."
+
+# ------------------------
+# Handle shareable links
+# ------------------------
+query_params = st.query_params
+if "file_id" in query_params:
+    file_id = query_params["file_id"][0]
+    session_data = load_session(file_id)
+    if session_data:
+        st.success(f"📌 Loaded shared dataset: {file_id}")
+        df = session_data["data"]
+        charts = session_data["charts"]
+        results_text = session_data["results"]
+        conclusion_text = session_data["conclusion"]
+    else:
+        st.error("❌ Invalid or expired link.")
+        df = None
+else:
+    df = None
+
+# ------------------------
+# Upload new file if not loaded via link
+# ------------------------
+if df is None:
+    uploaded_file = st.file_uploader("Upload Excel/CSV file", type=["xlsx", "xls", "csv"])
+    if uploaded_file:
+        if uploaded_file.name.endswith((".xlsx", ".xls")):
+            df = pd.read_excel(uploaded_file)
+        else:
+            df = pd.read_csv(uploaded_file)
+        st.success(f"✅ Loaded: {uploaded_file.name}")
+        st.dataframe(df.head(10))
+
+        # Generate charts and results
+        charts = generate_charts(df)
+        results_text = auto_results(df)
+        conclusion_text = auto_conclusion(results_text)
+
+        # Save session for shareable link
+        file_id = save_session(df, charts, results_text, conclusion_text)
+        share_url = f"{st.get_url()}?file_id={file_id}"
+        st.info(f"Shareable Link: [Click Here]({share_url})")
+
+# ------------------------
+# Display visualizations
+# ------------------------
+if df is not None:
+    st.subheader("### 📋 Data Preview (first 10 rows)")
+    st.dataframe(df.head(10))
+
+    st.subheader("### 📈 Descriptive Statistics & Visualizations")
+    for name, fig in charts.items():
+        st.pyplot(fig, use_container_width=True)
+
+    st.subheader("### 🧠 Auto-generated Results & Conclusion")
+    st.text_area("Results", results_text, height=150)
+    st.text_area("Conclusion", conclusion_text, height=100)
