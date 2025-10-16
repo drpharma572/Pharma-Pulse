@@ -42,12 +42,12 @@ if uploaded_file:
     chart_images = []
 
     # ------------------------
-    # Bar Chart Comparison
+    # Comparison Bar Chart (Two numeric variables)
     # ------------------------
     st.subheader("Bar Chart (Comparison)")
     if len(numeric_cols) >= 2:
-        bar_x = st.selectbox("Select X-axis numeric column", numeric_cols, key="bar_x")
-        bar_y = st.selectbox("Select Y-axis numeric column", numeric_cols, key="bar_y")
+        bar_x = st.selectbox("Select first numeric column", numeric_cols, key="bar_x")
+        bar_y = st.selectbox("Select second numeric column", numeric_cols, key="bar_y")
         fig, ax = plt.subplots()
         ax.bar(range(len(filtered_df)), filtered_df[bar_x], alpha=0.6, label=bar_x)
         ax.bar(range(len(filtered_df)), filtered_df[bar_y], alpha=0.6, label=bar_y)
@@ -57,6 +57,22 @@ if uploaded_file:
         ax.legend()
         st.pyplot(fig, use_container_width=True)
         chart_images.append(("bar_compare.png", fig))
+
+    # ------------------------
+    # Simple Bar Chart (Numeric vs Categorical)
+    # ------------------------
+    st.subheader("Simple Bar Chart (Numeric vs Categorical)")
+    if numeric_cols and categorical_cols:
+        simple_num = st.selectbox("Select numeric column", numeric_cols, key="simple_num")
+        simple_cat = st.selectbox("Select categorical column", categorical_cols, key="simple_cat")
+        fig, ax = plt.subplots(figsize=(10,5))
+        simple_data = filtered_df.groupby(simple_cat)[simple_num].mean().sort_values()
+        simple_data.plot(kind="bar", ax=ax, color="skyblue")
+        ax.set_title(f"{simple_num} by {simple_cat}")
+        ax.set_ylabel(simple_num)
+        ax.set_xlabel(simple_cat)
+        st.pyplot(fig, use_container_width=True)
+        chart_images.append(("bar_simple.png", fig))
 
     # ------------------------
     # Histogram Comparison
