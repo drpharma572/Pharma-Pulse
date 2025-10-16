@@ -1,138 +1,168 @@
-# app.py
+# 📊 PharmaPulse — Hospital DUS Dashboard
+# Developed by Dr. K | PharmaPulseByDrK
+
 import streamlit as st
 import pandas as pd
-import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
-from io import BytesIO
+import io
 import base64
+import tempfile
+from fpdf import FPDF
+import numpy as np
 
+# ------------------------------
+# App Config
+# ------------------------------
 st.set_page_config(page_title="PharmaPulse DUS Dashboard", layout="wide")
-st.title("📊 PharmaPulse — Digital DUS Data Visualization")
+st.title("📊 PharmaPulse — Hospital DUS Data Visualization")
 st.markdown("**Developed by Dr. K | PharmaPulseByDrK**")
 
-# ------------------------
-# File upload
-# ------------------------
-uploaded_file = st.file_uploader("Upload Excel file (.xlsx) for visualization", type=["xlsx"])
-if not uploaded_file:
-    st.stop()
+# ------------------------------
+# File Upload
+# ------------------------------
+uploaded_file = st.file_uploader(
+    "Upload Excel (.xlsx, .xls) or CSV (.csv) file",
+    type=["xlsx", "xls", "csv"],
+    accept_multiple_files=False
+)
 
-df = pd.read_excel(uploaded_file)
-st.success(f"✅ Loaded: {uploaded_file.name}")
+if uploaded_file:
+    # Detect file type and read
+    try:
+        if uploaded_file.name.endswith(".csv"):
+            df = pd.read_csv(uploaded_file)
+        else:
+            df = pd.read_excel(uploaded_file)
+        st.success(f"✅ Loaded: {uploaded_file.name}")
+    except Exception as e:
+        st.error(f"❌ Failed to load file: {e}")
+        st.stop()
 
-# ------------------------
-# Detect numeric & categorical columns
-# ------------------------
-numeric_cols = df.select_dtypes(include=np.number).columns.tolist()
-categorical_cols = df.select_dtypes(include='object').columns.tolist()
+    # ------------------------------
+    # Data Preview
+    # ------------------------------
+    st.subheader("### Data Preview (first 10 rows)")
+    st.dataframe(df.head(10))
 
-st.subheader("### Data preview (first 10 rows)")
-st.dataframe(df.head(10))
-st.write(f"**Numeric columns:** {numeric_cols}")
-st.write(f"**Categorical columns:** {categorical_cols}")
+    numeric_cols = df.select_dtypes(include="number").columns.tolist()
+    categorical_cols = df.select_dtypes(include="object").columns.tolist()
+    st.markdown(f"**Detected numeric columns:** {numeric_cols}")
+    st.markdown(f"**Detected categorical columns:** {categorical_cols}")
 
-# ------------------------
-# Filters
-# ------------------------
-st.subheader("### Filters (Optional)")
-filtered_df = df.copy()
-for col in categorical_cols:
-    options = st.multiselect(f"Filter {col}", options=df[col].unique(), default=df[col].unique())
-    if options:
-        filtered_df = filtered_df[filtered_df[col].isin(options)]
-st.write(f"After filters: {filtered_df.shape[0]} rows")
+    # ------------------------------
+    # Filters
+    # ------------------------------
+    st.subheader("### Quick Filters (Optional)")
+    filtered_df = df.copy()
+    for col in categorical_cols:
+        opts = st.multiselect(f"Filter {col}", options=filtered_df[col].unique())
+        if opts:
+            filtered_df = filtered_df[filtered_df[col].isin(opts)]
+    st.markdown(f"After filters: {len(filtered_df)} rows")
 
-# ------------------------
-# Charts
-# ------------------------
-st.subheader("### Visualizations")
-chart_images = []
+    # ------------------------------
+    # Descriptive Statistics
+    # ------------------------------
+    st.subheader("### Descriptive Statistics (Numeric)")
+    st.dataframe(filtered_df[numeric_cols].describe())
 
-def save_chart(fig):
-    buf = BytesIO()
-    fig.savefig(buf, format="png", bbox_inches='tight')
-    buf.seek(0)
-    return buf
+    st.subheader("### Descriptive Statistics (Categorical)")
+    for col in categorical_cols:
+        st.write(f"**{col} value counts:**")
+        st.dataframe(filtered_df[col].value_counts())
 
-# 1️⃣ Bar chart (numeric by category)
-if numeric_cols and categorical_cols:
-    num_col = st.selectbox("Select numeric column for Bar chart", numeric_cols, key="bar_num")
-    cat_col = st.selectbox("Select categorical column for Bar chart", categorical_cols, key="bar_cat")
-    bar_data = filtered_df.groupby(cat_col)[num_col].sum().reset_index()
-    fig, ax = plt.subplots()
-    sns.barplot(x=cat_col, y=num_col, data=bar_data, ax=ax)
-    ax.set_title(f"{num_col} by {cat_col}")
-    st.pyplot(fig)
-    chart_images.append(save_chart(fig))
+    # ------------------------------
+    # Visualizations
+    # ------------------------------
+    st.subheader("### Visualizations")
 
-# 2️⃣ Histogram (numeric)
-if numeric_cols:
-    hist_col = st.selectbox("Select numeric column for Histogram", numeric_cols, key="hist_num")
-    fig, ax = plt.subplots()
-    ax.hist(filtered_df[hist_col], bins=10, color='skyblue', edgecolor='black')
-    ax.set_title(f"Histogram of {hist_col}")
-    st.pyplot(fig)
-    chart_images.append(save_chart(fig))
+    # Bar chart
+    if numeric_cols and categorical_cols:
+        st.markdown("**Bar Chart**")
+        num_col = st.selectbox("Select numeric column", numeric_cols, key="bar_num")
+        cat_col = st.selectbox("Select categorical column", categorical_cols, key="bar_cat")
+        fig, ax = plt.subplots()
+        grouped = filtered_df.groupby(cat_col)[num_col].sum().reset_index()
+        sns.barplot(x=cat_col, y=num_col, data=grouped, ax=ax)
+        ax.set_title(f"{num_col} by {cat_col}")
+        st.pyplot(fig, use_container_width=True)
 
-# 3️⃣ Pie chart (categorical)
-if categorical_cols:
-    pie_col = st.selectbox("Select categorical column for Pie chart", categorical_cols, key="pie_cat")
-    pie_data = filtered_df[pie_col].value_counts()
-    fig, ax = plt.subplots()
-    ax.pie(pie_data.values, labels=pie_data.index, autopct="%1.1f%%")
-    ax.set_title(f"Pie chart of {pie_col}")
-    st.pyplot(fig)
-    chart_images.append(save_chart(fig))
+    # Histogram
+    if numeric_cols:
+        st.markdown("**Histogram**")
+        hist_col = st.selectbox("Select numeric column for histogram", numeric_cols, key="hist_col")
+        fig, ax = plt.subplots()
+        ax.hist(filtered_df[hist_col], bins=10, color="skyblue", edgecolor="black")
+        ax.set_title(f"Histogram of {hist_col}")
+        st.pyplot(fig, use_container_width=True)
 
-# 4️⃣ Scatter plot
-if len(numeric_cols) >= 2:
-    x_col = st.selectbox("Select X-axis numeric column for Scatter", numeric_cols, key="scatter_x")
-    y_col = st.selectbox("Select Y-axis numeric column for Scatter", numeric_cols, key="scatter_y")
-    fig, ax = plt.subplots()
-    sns.scatterplot(x=filtered_df[x_col], y=filtered_df[y_col], ax=ax)
-    ax.set_title(f"Scatter plot: {y_col} vs {x_col}")
-    st.pyplot(fig)
-    chart_images.append(save_chart(fig))
+    # Scatter
+    if len(numeric_cols) >= 2:
+        st.markdown("**Scatter Plot**")
+        x_col = st.selectbox("Select X-axis numeric column", numeric_cols, key="scatter_x")
+        y_col = st.selectbox("Select Y-axis numeric column", numeric_cols, key="scatter_y")
+        fig, ax = plt.subplots()
+        sns.scatterplot(x=x_col, y=y_col, data=filtered_df, ax=ax)
+        ax.set_title(f"{y_col} vs {x_col}")
+        st.pyplot(fig, use_container_width=True)
 
-# 5️⃣ Line chart
-if numeric_cols:
-    line_col = st.selectbox("Select numeric column for Line chart", numeric_cols, key="line_num")
-    fig, ax = plt.subplots()
-    ax.plot(filtered_df[line_col], marker='o')
-    ax.set_title(f"Line chart of {line_col}")
-    st.pyplot(fig)
-    chart_images.append(save_chart(fig))
+    # Pie chart
+    if categorical_cols:
+        st.markdown("**Pie Chart**")
+        pie_col = st.selectbox("Select categorical column for Pie chart", categorical_cols, key="pie_col")
+        pie_data = filtered_df[pie_col].value_counts()
+        fig, ax = plt.subplots()
+        ax.pie(pie_data.values, labels=pie_data.index, autopct="%1.1f%%")
+        ax.set_title(f"Pie chart of {pie_col}")
+        st.pyplot(fig, use_container_width=True)
 
-# 6️⃣ Area chart
-if numeric_cols:
-    area_col = st.selectbox("Select numeric column for Area chart", numeric_cols, key="area_num")
-    fig, ax = plt.subplots()
-    ax.fill_between(range(len(filtered_df[area_col])), filtered_df[area_col], color='lightgreen', alpha=0.5)
-    ax.set_title(f"Area chart of {area_col}")
-    st.pyplot(fig)
-    chart_images.append(save_chart(fig))
+    # ------------------------------
+    # Auto-generated Results & Conclusion (simple)
+    # ------------------------------
+    st.subheader("### 🧠 Auto-generated Research Results & Conclusion")
+    result_text = f"Data contains {len(filtered_df)} rows and {len(filtered_df.columns)} columns.\n"
+    result_text += f"Numeric columns summary:\n{filtered_df[numeric_cols].describe().to_string()}\n"
+    result_text += f"Categorical columns summary:\n"
+    for col in categorical_cols:
+        result_text += f"{col}: {filtered_df[col].value_counts().to_dict()}\n"
 
-# 7️⃣ Correlation heatmap
-if numeric_cols:
-    st.subheader("Correlation Heatmap")
-    corr = filtered_df[numeric_cols].corr()
-    fig, ax = plt.subplots(figsize=(8,6))
-    sns.heatmap(corr, annot=True, fmt=".2f", cmap="coolwarm", ax=ax)
-    st.pyplot(fig)
-    chart_images.append(save_chart(fig))
+    conclusion_text = "This dataset is suitable for DUS analysis and visual inspection using charts above.\n"
+    conclusion_text += "Further statistical tests (chi-square, t-tests, ANOVA) can be performed as needed for publication-ready research."
 
-# ------------------------
-# Shareable link
-# ------------------------
-st.subheader("### Share your dashboard")
-def get_table_download_link(df):
-    """Generates a shareable download link"""
-    csv = df.to_csv(index=False)
-    b64 = base64.b64encode(csv.encode()).decode()
-    return f'<a href="data:file/csv;base64,{b64}" download="filtered_data.csv">📥 Download filtered data CSV</a>'
+    st.text_area("Results", result_text, height=200)
+    st.text_area("Conclusion", conclusion_text, height=150)
 
-st.markdown(get_table_download_link(filtered_df), unsafe_allow_html=True)
-st.info("You can share this CSV link with colleagues or departments securely.")
+    # ------------------------------
+    # Shareable PDF
+    # ------------------------------
+    st.subheader("### 📄 Generate PDF & Share")
+    def create_pdf(df, results, charts):
+        pdf = FPDF()
+        pdf.set_auto_page_break(auto=True, margin=15)
+        pdf.add_page()
+        pdf.set_font("Arial", "B", 16)
+        pdf.cell(0, 10, "📊 PharmaPulse Report", ln=True)
+        pdf.set_font("Arial", "", 12)
+        pdf.multi_cell(0, 6, results)
+        pdf.add_page()
+        pdf.set_font("Arial", "I", 10)
+        pdf.cell(0, 10, "PharmaPulseByDrK", ln=True)
+        pdf.multi_cell(0, 5, df.head(10).to_string())
+        # Charts can be saved to temporary PNGs and added here if needed
+        buffer = io.BytesIO()
+        pdf.output(buffer)
+        buffer.seek(0)
+        return buffer.read()
 
-st.success("✅ Dashboard ready. All charts and filters are interactive, shareable, and suitable for DUS reporting.")
+    chart_images = []  # placeholder for charts if needed
+    pdf_data = create_pdf(filtered_df, result_text, chart_images)
+    st.download_button("Download PDF", data=pdf_data, file_name="PharmaPulse_Report.pdf", mime="application/pdf")
+
+    # ------------------------------
+    # Shareable Link (temporary solution)
+    # ------------------------------
+    st.subheader("### 🔗 Shareable Link")
+    b64 = base64.b64encode(uploaded_file.getvalue()).decode()
+    href = f'<a href="data:file/csv;base64,{b64}" download="{uploaded_file.name}">Click here to download and share your dataset</a>'
+    st.markdown(href, unsafe_allow_html=True)
