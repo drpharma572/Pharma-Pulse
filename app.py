@@ -6,16 +6,10 @@ import seaborn as sns
 from io import BytesIO
 import base64
 
-# ------------------------
-# App Config
-# ------------------------
 st.set_page_config(page_title="PharmaPulse Visualizer", layout="wide")
 st.title("📊 PharmaPulse — Digital DUS Visualization")
 st.markdown("**Developed by Dr. K | PharmaPulseByDrK**")
 
-# ------------------------
-# File Upload
-# ------------------------
 uploaded_file = st.file_uploader(
     "Upload Excel or CSV file",
     type=["xlsx", "xls", "csv"]
@@ -29,9 +23,6 @@ if uploaded_file:
 
     st.success(f"✅ Loaded: {uploaded_file.name}")
 
-    # ------------------------
-    # Detect Numeric and Categorical Columns
-    # ------------------------
     numeric_cols = df.select_dtypes(include="number").columns.tolist()
     categorical_cols = df.select_dtypes(include="object").columns.tolist()
 
@@ -39,9 +30,7 @@ if uploaded_file:
     st.write("**Numeric Columns:**", numeric_cols)
     st.write("**Categorical Columns:**", categorical_cols)
 
-    # ------------------------
     # Filters
-    # ------------------------
     st.subheader("🧩 Apply Filters (Optional)")
     filtered_df = df.copy()
     for col in categorical_cols:
@@ -50,41 +39,65 @@ if uploaded_file:
 
     st.write(f"Filtered Rows: {len(filtered_df)}")
 
-    # ------------------------
-    # Data Visualizations
-    # ------------------------
     chart_images = []
 
-    # Bar Chart (Continuous variables handled correctly)
-    st.subheader("Bar Chart")
-    if numeric_cols:
-        num_col = st.selectbox("Select Numeric Column", numeric_cols, key="bar_num")
+    # ------------------------
+    # Bar Chart Comparison
+    # ------------------------
+    st.subheader("Bar Chart (Comparison)")
+    if len(numeric_cols) >= 2:
+        bar_x = st.selectbox("Select X-axis numeric column", numeric_cols, key="bar_x")
+        bar_y = st.selectbox("Select Y-axis numeric column", numeric_cols, key="bar_y")
         fig, ax = plt.subplots()
-        ax.bar(range(len(filtered_df)), filtered_df[num_col])  # Continuous variable, no aggregation
-        ax.set_title(f"{num_col} (continuous)")
+        ax.bar(range(len(filtered_df)), filtered_df[bar_x], alpha=0.6, label=bar_x)
+        ax.bar(range(len(filtered_df)), filtered_df[bar_y], alpha=0.6, label=bar_y)
+        ax.set_title(f"Comparison: {bar_x} vs {bar_y}")
         ax.set_xlabel("Index")
-        ax.set_ylabel(num_col)
+        ax.set_ylabel("Values")
+        ax.legend()
         st.pyplot(fig, use_container_width=True)
-        chart_images.append(("bar.png", fig))
+        chart_images.append(("bar_compare.png", fig))
 
-    # Histogram (without KDE)
-    st.subheader("Histogram")
-    if numeric_cols:
-        hist_col = st.selectbox("Select Numeric Column for Histogram", numeric_cols, key="hist_col")
+    # ------------------------
+    # Histogram Comparison
+    # ------------------------
+    st.subheader("Histogram (Comparison)")
+    if len(numeric_cols) >= 2:
+        hist_x = st.selectbox("Select first numeric column", numeric_cols, key="hist_x")
+        hist_y = st.selectbox("Select second numeric column", numeric_cols, key="hist_y")
         fig, ax = plt.subplots()
-        sns.histplot(filtered_df[hist_col].dropna(), bins=15, kde=False, ax=ax)
-        ax.set_title(f"Distribution of {hist_col}")
+        sns.histplot(filtered_df[hist_x].dropna(), bins=15, color="blue", alpha=0.6, label=hist_x, ax=ax)
+        sns.histplot(filtered_df[hist_y].dropna(), bins=15, color="red", alpha=0.6, label=hist_y, ax=ax)
+        ax.set_title(f"Histogram Comparison: {hist_x} vs {hist_y}")
+        ax.legend()
         st.pyplot(fig, use_container_width=True)
-        chart_images.append(("histogram.png", fig))
+        chart_images.append(("hist_compare.png", fig))
+
+    # ------------------------
+    # Line Chart Comparison
+    # ------------------------
+    st.subheader("Line Chart (Comparison)")
+    if len(numeric_cols) >= 2:
+        line_x = st.selectbox("Select first numeric column", numeric_cols, key="line_x")
+        line_y = st.selectbox("Select second numeric column", numeric_cols, key="line_y")
+        fig, ax = plt.subplots()
+        ax.plot(filtered_df[line_x].values, label=line_x)
+        ax.plot(filtered_df[line_y].values, label=line_y)
+        ax.set_title(f"Line Chart Comparison: {line_x} vs {line_y}")
+        ax.set_xlabel("Index")
+        ax.set_ylabel("Values")
+        ax.legend()
+        st.pyplot(fig, use_container_width=True)
+        chart_images.append(("line_compare.png", fig))
 
     # Scatter Plot
     st.subheader("Scatter Plot")
-    if numeric_cols:
-        x_col = st.selectbox("X-axis", numeric_cols, key="scatter_x")
-        y_col = st.selectbox("Y-axis", numeric_cols, key="scatter_y")
+    if len(numeric_cols) >= 2:
+        scatter_x = st.selectbox("X-axis", numeric_cols, key="scatter_x")
+        scatter_y = st.selectbox("Y-axis", numeric_cols, key="scatter_y")
         fig, ax = plt.subplots()
-        sns.scatterplot(x=filtered_df[x_col], y=filtered_df[y_col], ax=ax)
-        ax.set_title(f"{y_col} vs {x_col}")
+        sns.scatterplot(x=filtered_df[scatter_x], y=filtered_df[scatter_y], ax=ax)
+        ax.set_title(f"{scatter_y} vs {scatter_x}")
         st.pyplot(fig, use_container_width=True)
         chart_images.append(("scatter.png", fig))
 
@@ -99,16 +112,6 @@ if uploaded_file:
         st.pyplot(fig, use_container_width=True)
         chart_images.append(("pie.png", fig))
 
-    # Line Chart
-    st.subheader("Line Chart")
-    if numeric_cols:
-        line_col = st.selectbox("Select Numeric Column for Line Chart", numeric_cols, key="line_col")
-        fig, ax = plt.subplots()
-        ax.plot(filtered_df[line_col].values)
-        ax.set_title(f"Line Chart of {line_col}")
-        st.pyplot(fig, use_container_width=True)
-        chart_images.append(("line.png", fig))
-
     # Correlation Heatmap
     st.subheader("Correlation Heatmap")
     if len(numeric_cols) > 1:
@@ -119,7 +122,7 @@ if uploaded_file:
         chart_images.append(("heatmap.png", fig))
 
     # ------------------------
-    # Share & Print Graphs Only
+    # Share & Print Visualization Only
     # ------------------------
     st.subheader("🖨 Print & Share Visualization Only")
 
