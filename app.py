@@ -3,8 +3,8 @@ import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
-import base64
 from io import BytesIO
+import base64
 
 # ------------------------
 # App Config
@@ -55,15 +55,15 @@ if uploaded_file:
     # ------------------------
     chart_images = []
 
-    # Bar Chart
+    # Bar Chart (Continuous variables handled correctly)
     st.subheader("Bar Chart")
-    if numeric_cols and categorical_cols:
+    if numeric_cols:
         num_col = st.selectbox("Select Numeric Column", numeric_cols, key="bar_num")
-        cat_col = st.selectbox("Select Categorical Column", categorical_cols, key="bar_cat")
-        bar_data = filtered_df.groupby(cat_col)[num_col].sum().reset_index()
         fig, ax = plt.subplots()
-        sns.barplot(x=cat_col, y=num_col, data=bar_data, ax=ax)
-        ax.set_title(f"{num_col} by {cat_col}")
+        ax.bar(range(len(filtered_df)), filtered_df[num_col])  # Continuous variable, no aggregation
+        ax.set_title(f"{num_col} (continuous)")
+        ax.set_xlabel("Index")
+        ax.set_ylabel(num_col)
         st.pyplot(fig, use_container_width=True)
         chart_images.append(("bar.png", fig))
 
@@ -72,7 +72,7 @@ if uploaded_file:
     if numeric_cols:
         hist_col = st.selectbox("Select Numeric Column for Histogram", numeric_cols, key="hist_col")
         fig, ax = plt.subplots()
-        sns.histplot(filtered_df[hist_col].dropna(), bins=15, kde=False, ax=ax)  # KDE removed
+        sns.histplot(filtered_df[hist_col].dropna(), bins=15, kde=False, ax=ax)
         ax.set_title(f"Distribution of {hist_col}")
         st.pyplot(fig, use_container_width=True)
         chart_images.append(("histogram.png", fig))
@@ -104,14 +104,14 @@ if uploaded_file:
     if numeric_cols:
         line_col = st.selectbox("Select Numeric Column for Line Chart", numeric_cols, key="line_col")
         fig, ax = plt.subplots()
-        sns.lineplot(data=filtered_df[line_col], ax=ax)
+        ax.plot(filtered_df[line_col].values)
         ax.set_title(f"Line Chart of {line_col}")
         st.pyplot(fig, use_container_width=True)
         chart_images.append(("line.png", fig))
 
     # Correlation Heatmap
     st.subheader("Correlation Heatmap")
-    if numeric_cols:
+    if len(numeric_cols) > 1:
         fig, ax = plt.subplots(figsize=(8, 6))
         sns.heatmap(filtered_df[numeric_cols].corr(), annot=True, cmap="coolwarm", ax=ax)
         ax.set_title("Correlation Heatmap")
@@ -119,26 +119,26 @@ if uploaded_file:
         chart_images.append(("heatmap.png", fig))
 
     # ------------------------
-    # Share & Print Options
+    # Share & Print Graphs Only
     # ------------------------
-    st.subheader("🖨 Print & Share Visualization")
+    st.subheader("🖨 Print & Share Visualization Only")
 
-    # Function to convert chart to image bytes
-    def save_chart(fig):
+    # Convert matplotlib figures to base64 images
+    def fig_to_base64(fig):
         buf = BytesIO()
-        fig.savefig(buf, format="png")
+        fig.savefig(buf, format="png", bbox_inches="tight")
         buf.seek(0)
-        return buf.getvalue()
+        return base64.b64encode(buf.read()).decode()
 
-    # Save all chart images
-    image_buffers = [save_chart(fig) for _, fig in chart_images]
+    # Generate shareable HTML link for graphs
+    img_html_list = [f'<img src="data:image/png;base64,{fig_to_base64(fig)}" width="600"><br>' 
+                     for _, fig in chart_images]
+    html_content = "".join(img_html_list)
+    b64_html = base64.b64encode(html_content.encode()).decode()
+    share_link = f"data:text/html;base64,{b64_html}"
+    st.markdown(f"[📤 Share Visualization via Link]({share_link})", unsafe_allow_html=True)
 
-    # Print DataFrame
-    if st.button("Print Data"):
-        st.dataframe(filtered_df)
-
-    # Shareable link (as base64)
-    csv_bytes = filtered_df.to_csv(index=False).encode()
-    b64_csv = base64.b64encode(csv_bytes).decode()
-    share_link = f"data:text/csv;base64,{b64_csv}"
-    st.markdown(f"[📤 Share CSV via Link]({share_link})", unsafe_allow_html=True)
+    # Print all graphs inline
+    if st.button("Print Graphs"):
+        for _, fig in chart_images:
+            st.pyplot(fig, use_container_width=True)
